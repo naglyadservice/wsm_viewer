@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Устройство {{device_id}} - WSM Viewer</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .card-header {
+            font-weight: bold;
+        }
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #28a745;
+        }
+        .status-inactive {
+            background-color: #6c757d;
+        }
+        .status-error {
+            background-color: #dc3545;
+        }
+        .form-group label {
+            font-weight: bold;
+        }
+        .nav-tabs {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Навигационная панель -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">WSM Viewer</a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ml-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Выход</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container my-4" id="device-container" data-device-id="{{device_id}}">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Устройство {{device_id}}</li>
+            </ol>
+        </nav>
+
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <h2>Устройство: {{device_id}}</h2>
+            </div>
+            <div class="col-md-4 text-right">
+                <button id="btn-reboot" class="btn btn-warning">Перезагрузка</button>
+            </div>
+        </div>
+
+        <div class="alert alert-success d-none" id="success-message"></div>
+        <div class="alert alert-danger d-none" id="state-error"></div>
+
+        <!-- Вкладки для разных разделов -->
+        <ul class="nav nav-tabs" id="deviceTabs" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="state-tab" data-toggle="tab" href="#state" role="tab">Состояние</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="settings-tab" data-toggle="tab" href="#settings" role="tab">Настройки</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="config-tab" data-toggle="tab" href="#config" role="tab">Конфигурация</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="control-tab" data-toggle="tab" href="#control" role="tab">Управление</a>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="deviceTabsContent">
+            <!-- Вкладка состояния -->
+            <div class="tab-pane fade show active" id="state" role="tabpanel">
+                <div class="row">
+                    <!-- Текущее состояние -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                Текущее состояние
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <p class="font-weight-bold">Статус:</p>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <p id="operating-mode">Загрузка...</p>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <p class="font-weight-bold">Сумма в кассе:</p>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <p id="summa-in-box">Загрузка...</p>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <p class="font-weight-bold">Воды в баке:</p>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <p id="liters-in-tank">Загрузка...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Состояние датчиков -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">
+                                Состояние датчиков
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="font-weight-bold">Датчик нижнего уровня:</p>
+                                    </div>
+                                    <div class="col-md-6" id="tank-low-level">
+                                        <span class="badge badge-secondary">Загрузка...</span>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="font-weight-bold">Датчик верхнего уровня:</p>
+                                    </div>
+                                    <div class="col-md-6" id="tank-high-level">
+                                        <span class="badge badge-secondary">Загрузка...</span>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="font-weight-bold">Купюроприемник:</p>
+                                    </div>
+                                    <div class="col-md-6" id="deposit-box">
+                                        <span class="badge badge-secondary">Загрузка...</span>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="font-weight-bold">Датчик двери:</p>
+                                    </div>
+                                    <div class="col-md-6" id="door-sensor">
+                                        <span class="badge badge-secondary">Загрузка...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Валидаторы -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                Состояние валидаторов
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="font-weight-bold">Монетоприемник:</p>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <p id="coin-state">Загрузка...</p>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="font-weight-bold">Купюроприемник:</p>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <p id="bill-state">Загрузка...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ошибки -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-danger text-white">
+                                Ошибки
+                            </div>
+                            <div class="card-body">
+                                <div id="errors-container">
+                                    <p>Загрузка данных об ошибках...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <p class="text-muted">Последнее обновление: <span id="last-update">-</span></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Вкладка настроек -->
+            <div class="tab-pane fade" id="settings" role="tabpanel">
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <button id="btn-request-settings" class="btn btn-primary">Запросить настройки</button>
+                        <button id="btn-save-settings" class="btn btn-success ml-2 d-none">Сохранить настройки</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        Настройки устройства
+                    </div>
+                    <div class="card-body">
+                        <div id="settings-loading" class="text-center">
+                            <p>Нажмите "Запросить настройки" для получения текущих настроек устройства</p>
+                        </div>
+                        <form id="settings-form" class="d-none">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="maxPayment">Максимальная сумма приема (коп.)</label>
+                                        <input type="number" class="form-control" id="maxPayment" name="maxPayment">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="minPayPass">Минимальная сумма PayPass (0.01л)</label>
+                                        <input type="number" class="form-control" id="minPayPass" name="minPayPass">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="maxPayPass">Максимальная сумма PayPass (0.01л)</label>
+                                        <input type="number" class="form-control" id="maxPayPass" name="maxPayPass">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="deltaPayPass">Дельта суммы PayPass (0.01л)</label>
+                                        <input type="number" class="form-control" id="deltaPayPass" name="deltaPayPass">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="tariffPerLiter_1">Тариф за 1л #1 (коп.)</label>
+                                        <input type="number" class="form-control" id="tariffPerLiter_1" name="tariffPerLiter_1">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="tariffPerLiter_2">Тариф за 1л #2 (коп.)</label>
+                                        <input type="number" class="form-control" id="tariffPerLiter_2" name="tariffPerLiter_2">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label for="pulsesPerLiter_1">Расходомер выдачи (#1)</label>
+                                        <input type="number" class="form-control" id="pulsesPerLiter_1" name="pulsesPerLiter_1">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label for="pulsesPerLiter_2">Расходомер общий (#2)</label>
+                                        <input type="number" class="form-control" id="pulsesPerLiter_2" name="pulsesPerLiter_2">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label for="pulsesPerLiter_3">Расходомер ОСМОС (#3)</label>
+                                        <input type="number" class="form-control" id="pulsesPerLiter_3" name="pulsesPerLiter_3">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="timeOnePay">Время одной продажи (сек)</label>
+                                        <input type="number" class="form-control" id="timeOnePay" name="timeOnePay">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="litersInFullTank">Воды в полном баке (0.01л)</label>
+                                        <input type="number" class="form-control" id="litersInFullTank" name="litersInFullTank">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label for="timeServisMode">Время сервисного режима (сек)</label>
+                                        <input type="number" class="form-control" id="timeServisMode" name="timeServisMode">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label for="spillTimer">Время для пролива воды (мин)</label>
+                                        <input type="number" class="form-control" id="spillTimer" name="spillTimer">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label for="spillAmount">Проливаемая вода (0.01л)</label>
+                                        <input type="number" class="form-control" id="spillAmount" name="spillAmount">
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Вкладка конфигурации -->
+            <div class="tab-pane fade" id="config" role="tabpanel">
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <button id="btn-request-config" class="btn btn-info">Запросить конфигурацию</button>
+                        <button id="btn-save-config" class="btn btn-success ml-2 d-none">Сохранить конфигурацию</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        Конфигурация устройства
+                    </div>
+                    <div class="card-body">
+                        <div id="config-loading" class="text-center">
+                            <p>Нажмите "Запросить конфигурацию" для получения текущей конфигурации устройства</p>
+                        </div>
+                        <form id="config-form" class="d-none">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="wifi_STA_ssid">WiFi SSID</label>
+                                        <input type="text" class="form-control" id="wifi_STA_ssid" name="wifi_STA_ssid">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="wifi_STA_pass">WiFi Password</label>
+                                        <input type="password" class="form-control" id="wifi_STA_pass" name="wifi_STA_pass">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="ntp_server">NTP Сервер</label>
+                                        <input type="text" class="form-control" id="ntp_server" name="ntp_server">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="timeZone">Часовой пояс</label>
+                                        <input type="number" class="form-control" id="timeZone" name="timeZone">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="broker_uri">MQTT Брокер URI</label>
+                                        <input type="text" class="form-control" id="broker_uri" name="broker_uri">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="broker_port">MQTT Порт</label>
+                                        <input type="number" class="form-control" id="broker_port" name="broker_port">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="broker_user">MQTT Пользователь</label>
+                                        <input type="text" class="form-control" id="broker_user" name="broker_user">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="broker_pass">MQTT Пароль</label>
+                                        <input type="password" class="form-control" id="broker_pass" name="broker_pass">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <div class="form-group">
+                                        <label for="OTA_server">OTA Сервер</label>
+                                        <input type="text" class="form-control" id="OTA_server" name="OTA_server">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label for="OTA_port">OTA Порт</label>
+                                        <input type="number" class="form-control" id="OTA_port" name="OTA_port">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="bill_table">Таблица купюр</label>
+                                        <input type="text" class="form-control" id="bill_table" name="bill_table" placeholder="5,10,20,50,100,200,500,1000">
+                                        <small class="form-text text-muted">Введите значения через запятую</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="coin_table">Таблица монет</label>
+                                        <input type="text" class="form-control" id="coin_table" name="coin_table" placeholder="50,100,100,200,500,1000">
+                                        <small class="form-text text-muted">Введите значения через запятую</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="coinValidatorType">Тип монетоприемника</label>
+                                        <select class="form-control" id="coinValidatorType" name="coinValidatorType">
+                                            <option value="protocol">Protocol</option>
+                                            <option value="impulse">Impulse</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="coinPulsePrice">Цена импульса монеты</label>
+                                        <input type="number" class="form-control" id="coinPulsePrice" name="coinPulsePrice">
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Вкладка Управление -->
+            <div class="tab-pane fade" id="control" role="tabpanel">
+                <!-- Информация с дисплея -->
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        Информация с дисплея
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <button id="btn-request-display" class="btn btn-primary">Запросить дисплей</button>
+                            </div>
+                        </div>
+                        <div id="display-info" class="d-none">
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">Строка 1</div>
+                                <div class="card-body">
+                                    <p id="display-line-1">-</p>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card-header bg-light">Строка 2</div>
+                                <div class="card-body">
+                                    <p id="display-line-2">-</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="display-loading">
+                            <p class="text-center">Нажмите "Запросить дисплей" для получения информации</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Управление платежами -->
+                <div class="card mb-4">
+                    <div class="card-header bg-info text-white">
+                        Управление платежами
+                    </div>
+                    <div class="card-body">
+                        <!-- QR-код платеж -->
+                        <div class="form-group border-bottom pb-3">
+                            <h5>Отправка QR-code платежа</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label for="qrcode-order-id">ID заказа</label>
+                                    <input type="text" class="form-control" id="qrcode-order-id" placeholder="order_123456">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="qrcode-amount">Сумма (коп.)</label>
+                                    <input type="number" class="form-control" id="qrcode-amount" placeholder="1000">
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end">
+                                    <button id="btn-send-qrcode" class="btn btn-primary btn-block">Отправить</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Свободное начисление -->
+                        <div class="form-group border-bottom pb-3 pt-2">
+                            <h5>Свободное начисление</h5>
+                            <div class="row">
+                                <div class="col-md-10">
+                                    <label for="free-amount">Сумма (коп.)</label>
+                                    <input type="number" class="form-control" id="free-amount" placeholder="2500">
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end">
+                                    <button id="btn-send-free" class="btn btn-primary btn-block">Начислить</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Обнуление платежей -->
+                        <div class="form-group pt-2">
+                            <h5>Обнуление платежей</h5>
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="clear-coin" checked>
+                                        <label class="custom-control-label" for="clear-coin">Монеты</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="clear-bill" checked>
+                                        <label class="custom-control-label" for="clear-bill">Купюры</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="clear-prev" checked>
+                                        <label class="custom-control-label" for="clear-prev">Предыдущие</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="clear-free" checked>
+                                        <label class="custom-control-label" for="clear-free">Свободные</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="clear-qrcode" checked>
+                                        <label class="custom-control-label" for="clear-qrcode">QR-код</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="clear-paypass" checked>
+                                        <label class="custom-control-label" for="clear-paypass">PayPass</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-12">
+                                    <button id="btn-clear-payment" class="btn btn-danger">Обнулить платежи</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Управление действиями -->
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        Управление действиями
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 border-right">
+                                <h5>Пролив воды</h5>
+                                <div class="btn-group-vertical mb-3 w-100">
+                                    <div class="btn-group mb-2">
+                                        <button id="btn-pour-start-1" class="btn btn-success">Вода 1</button>
+                                        <button id="btn-pour-start-2" class="btn btn-info">Вода 2</button>
+                                    </div>
+                                    <button id="btn-pour-stop" class="btn btn-danger">Остановить</button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Блокировка автомата</h5>
+                                <div class="btn-group">
+                                    <button id="btn-block-on" class="btn btn-danger">Заблокировать</button>
+                                    <button id="btn-block-off" class="btn btn-success">Разблокировать</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="/static/js/device.js"></script>
+</body>
+</html>
