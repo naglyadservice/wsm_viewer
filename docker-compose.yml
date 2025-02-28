@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - MQTT_BROKER=mqtt.example.com
+      - MQTT_PORT=1883
+      - MQTT_USERNAME=user
+      - MQTT_PASSWORD=pass
+      - SECRET_KEY=changeThisToRandomSecureKeyInProduction
+    restart: unless-stopped
+    volumes:
+      - wsm_data:/app/data
+
+  # Вы можете добавить MQTT-брокер, если хотите запускать его локально
+  # mosquitto:
+  #   image: eclipse-mosquitto:latest
+  #   ports:
+  #     - "1883:1883"
+  #     - "9001:9001"
+  #   volumes:
+  #     - mosquitto_data:/mosquitto/data
+  #     - mosquitto_log:/mosquitto/log
+  #     - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+  #   restart: unless-stopped
+
+volumes:
+  wsm_data:
+  # mosquitto_data:
+  # mosquitto_log:
