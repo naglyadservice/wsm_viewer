@@ -15,7 +15,7 @@ class User(UserMixin):
 
 # Словарь для хранения пользователей (в реальном приложении это была бы база данных)
 users = {
-    'admin': User(1, 'admin', generate_password_hash('admin'))  # Используйте более надежный пароль!
+    'admin': User(1, 'admin', generate_password_hash('alex414alex'))  # Используйте более надежный пароль!
 }
 
 # Функция для инициализации авторизации
