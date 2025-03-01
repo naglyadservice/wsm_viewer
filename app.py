@@ -14,7 +14,7 @@ app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
 
 # Инициализация базы данных (пока не используется, но может пригодиться)
-db = SQLAlchemy(app)
+# db = SQLAlchemy(app)
 
 # Инициализация авторизации
 init_auth(app)
