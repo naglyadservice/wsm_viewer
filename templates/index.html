@@ -1,128 +1,135 @@
 <!DOCTYPE html>
 <html lang="ru">
-<head>
+
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WSM Viewer - Список устройств</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-</head>
-<body>
+
+    <style>
+      html,
+      body {
+        min-width: 400px;
+      }
+    </style>
+  </head>
+
+  <body>
     <!-- Навигационная панель -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand" href="/">WSM Viewer</a>
-            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ml-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('logout') }}">Выход</a>
-                    </li>
-                </ul>
+    <nav class="py-3 bg-primary">
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+              <a class="text-white h4" href="/">WSM Viewer</a>
+              <a class="text-white" href="{{ url_for('logout') }}">Выход</a>
             </div>
+          </div>
         </div>
+      </div>
     </nav>
 
     <div class="container my-4">
-        <h1 class="mb-4">Список устройств</h1>
+      <h1 class="mb-4">Список устройств</h1>
 
-        <div class="alert alert-success d-none" id="success-message"></div>
-        <div class="alert alert-danger d-none" id="error-message"></div>
+      <div class="alert alert-success d-none" id="success-message"></div>
+      <div class="alert alert-danger d-none" id="error-message"></div>
 
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                Обнаруженные устройства
-            </div>
-            <div class="card-body">
-                <div id="devices-list">
-                    <p>Загрузка списка устройств...</p>
-                </div>
-            </div>
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+          Обнаруженные устройства
         </div>
+        <div class="card-body">
+          <div id="devices-list">
+            <p>Загрузка списка устройств...</p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Функция для показа сообщения об успехе
-            function showMessage(message) {
-                const messageEl = document.getElementById('success-message');
-                messageEl.textContent = message;
-                messageEl.classList.remove('d-none');
-                
-                // Автоматически скрываем через 5 секунд
-                setTimeout(() => {
-                    messageEl.classList.add('d-none');
-                }, 5000);
+      document.addEventListener('DOMContentLoaded', function () {
+        // Функция для показа сообщения об успехе
+        function showMessage(message) {
+          const messageEl = document.getElementById('success-message');
+          messageEl.textContent = message;
+          messageEl.classList.remove('d-none');
+
+          // Автоматически скрываем через 5 секунд
+          setTimeout(() => {
+            messageEl.classList.add('d-none');
+          }, 5000);
+        }
+
+        // Функция для показа сообщения об ошибке
+        function showError(message) {
+          const errorEl = document.getElementById('error-message');
+          errorEl.textContent = message;
+          errorEl.classList.remove('d-none');
+        }
+
+        // Функция для скрытия сообщения об ошибке
+        function hideError() {
+          document.getElementById('error-message').classList.add('d-none');
+        }
+
+        // Запрос списка устройств
+        fetch('/api/devices')
+          .then(response => {
+            if (!response.ok) {
+              // Если 401 Unauthorized, перенаправляем на страницу входа
+              if (response.status === 401) {
+                window.location.href = '/login';
+                throw new Error('Unauthorized');
+              }
+              throw new Error('Network response was not ok');
             }
-            
-            // Функция для показа сообщения об ошибке
-            function showError(message) {
-                const errorEl = document.getElementById('error-message');
-                errorEl.textContent = message;
-                errorEl.classList.remove('d-none');
+            return response.json();
+          })
+          .then(data => {
+            const devicesListElement = document.getElementById('devices-list');
+
+            if (data.devices && data.devices.length > 0) {
+              // Создаем список устройств
+              const listElement = document.createElement('div');
+              listElement.className = 'list-group';
+
+              data.devices.forEach(deviceId => {
+                // Создаем контейнер для устройства
+                const deviceContainer = document.createElement('div');
+                deviceContainer.className = 'list-group-item';
+
+                // Ссылка на устройство
+                const deviceLink = document.createElement('a');
+                deviceLink.href = `/device/${deviceId}`;
+                deviceLink.className = 'device-link';
+                deviceLink.textContent = `S/N: ${deviceId}`;
+
+                // Добавляем все элементы в контейнер
+                deviceContainer.appendChild(deviceLink);
+
+                listElement.appendChild(deviceContainer);
+              });
+
+              devicesListElement.innerHTML = '';
+              devicesListElement.appendChild(listElement);
+            } else {
+              devicesListElement.innerHTML = '<div class="alert alert-info">Устройства не обнаружены. Проверьте подключение к MQTT-брокеру.</div>';
             }
-            
-            // Функция для скрытия сообщения об ошибке
-            function hideError() {
-                document.getElementById('error-message').classList.add('d-none');
+          })
+          .catch(error => {
+            if (error.message !== 'Unauthorized') {
+              console.error('Error:', error);
+              document.getElementById('devices-list').innerHTML =
+                '<div class="alert alert-danger">Ошибка при загрузке списка устройств: ' + error.message + '</div>';
             }
-            
-            // Запрос списка устройств
-            fetch('/api/devices')
-                .then(response => {
-                    if (!response.ok) {
-                        // Если 401 Unauthorized, перенаправляем на страницу входа
-                        if (response.status === 401) {
-                            window.location.href = '/login';
-                            throw new Error('Unauthorized');
-                        }
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    const devicesListElement = document.getElementById('devices-list');
-                    
-                    if (data.devices && data.devices.length > 0) {
-                        // Создаем список устройств
-                        const listElement = document.createElement('div');
-                        listElement.className = 'list-group';
-                        
-                        data.devices.forEach(deviceId => {
-                            // Создаем контейнер для устройства
-                            const deviceContainer = document.createElement('div');
-                            deviceContainer.className = 'list-group-item';
-                            
-                            // Ссылка на устройство
-                            const deviceLink = document.createElement('a');
-                            deviceLink.href = `/device/${deviceId}`;
-                            deviceLink.className = 'device-link';
-                            deviceLink.textContent = `S/N: ${deviceId}`;
-                            
-                            // Добавляем все элементы в контейнер
-                            deviceContainer.appendChild(deviceLink);
-                            
-                            listElement.appendChild(deviceContainer);
-                        });
-                        
-                        devicesListElement.innerHTML = '';
-                        devicesListElement.appendChild(listElement);
-                    } else {
-                        devicesListElement.innerHTML = '<div class="alert alert-info">Устройства не обнаружены. Проверьте подключение к MQTT-брокеру.</div>';
-                    }
-                })
-                .catch(error => {
-                    if (error.message !== 'Unauthorized') {
-                        console.error('Error:', error);
-                        document.getElementById('devices-list').innerHTML = 
-                            '<div class="alert alert-danger">Ошибка при загрузке списка устройств: ' + error.message + '</div>';
-                    }
-                });
-        });
+          });
+      });
     </script>
-</body>
+  </body>
+
 </html>
