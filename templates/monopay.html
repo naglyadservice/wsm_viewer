@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Пополнение водомата - Монобанк</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <style>
+    html,
+    body {
+      min-width: 400px;
+    }
+
+    .payment-container {
+      max-width: 500px;
+      margin: 50px auto;
+    }
+
+    .card-header {
+      background-color: #3c2e7b;
+      color: white;
+      font-weight: bold;
+    }
+
+    .monobank-logo {
+      max-height: 40px;
+    }
+
+    .amount-preset {
+      margin: 5px;
+      min-width: 80px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container payment-container">
+    <div class="card">
+      <div class="card-header text-center d-flex justify-content-between align-items-center">
+        <span>Пополнение водомата</span>
+        <img src="https://www.monobank.ua/resources/1.0.22.3/img/logo-light.svg" alt="Monobank" class="monobank-logo">
+      </div>
+      <div class="card-body">
+        {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+
+        {% if success %}
+        <div class="alert alert-success">{{ success }}</div>
+        {% endif %}
+
+        <h5 class="mb-3">Водомат #{{ device_id }}</h5>
+        <p>Выберите сумму пополнения или введите свою:</p>
+
+        <form method="post" action="{{ request.path }}">
+          <div class="form-group">
+            <label for="amount">Сумма в гривнах:</label>
+            <div class="input-group mb-3">
+              <input type="number" step="0.01" min="1" class="form-control" id="amount" name="amount" placeholder="Введите сумму" required>
+              <div class="input-group-append">
+                <span class="input-group-text">₴</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-4 text-center">
+            <p class="mb-2">Популярные суммы:</p>
+            <div class="btn-group-sm">
+              <button type="button" class="btn btn-outline-primary amount-preset" data-amount="10">10₴</button>
+              <button type="button" class="btn btn-outline-primary amount-preset" data-amount="20">20₴</button>
+              <button type="button" class="btn btn-outline-primary amount-preset" data-amount="50">50₴</button>
+              <button type="button" class="btn btn-outline-primary amount-preset" data-amount="100">100₴</button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">Перейти к оплате</button>
+        </form>
+      </div>
+      <div class="card-footer text-muted text-center">
+        <small>Нажимая кнопку "Перейти к оплате", вы будете перенаправлены на защищенную страницу оплаты Monobank</small>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Обработчики для кнопок с предустановленными суммами
+      const presetButtons = document.querySelectorAll('.amount-preset');
+      const amountInput = document.getElementById('amount');
+
+      presetButtons.forEach(button => {
+        button.addEventListener('click', function() {
+          const amount = this.getAttribute('data-amount');
+          amountInput.value = amount;
+        });
+      });
+    });
+  </script>
+</body>
+
+</html>

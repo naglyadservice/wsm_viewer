@@ -10,7 +10,8 @@ from mqtt.client import (
     update_device_settings,
     update_device_config,
     send_reboot_command,
-    get_device_state
+    get_device_state,
+    update_monobank_api_key
 )
 
 api = Blueprint("api", __name__)
@@ -174,8 +175,6 @@ def get_device_denomination(device_id):
         return jsonify({"denomination": devices[device_id]["denomination"]})
     return jsonify({"denomination": []})
 
-# Добавить эти маршруты в конец файла routes.py
-
 @api.route("/devices/<device_id>/display", methods=["GET"])
 @login_required
 def get_display_info(device_id):
@@ -315,3 +314,93 @@ def get_action_ack(device_id):
     if device_id in devices and "action_ack" in devices[device_id]:
         return jsonify(devices[device_id]["action_ack"])
     return jsonify({"error": "Action ACK not available"}), 404
+
+@api.route("/devices/<device_id>/monobank/api-key", methods=["PUT"])
+@login_required
+def update_device_monobank_api_key(device_id):
+    """Обновление API-ключа Monobank для устройства"""
+    if device_id not in devices:
+        return jsonify({"error": "Device not found"}), 404
+    
+    data = request.json
+    api_key = data.get("api_key", "")
+    
+    update_monobank_api_key(device_id, api_key)
+    return jsonify({"message": f"Monobank API key updated for {device_id}"})
+
+@api.route("/webhook/monobank/<device_id>/<order_id>/<amount>", methods=["POST"])
+def monobank_webhook(device_id, order_id, amount):
+    """Обработчик вебхука от Monobank"""
+    try:
+        # Получаем данные от Monobank
+        data = request.json
+        
+        # Проверяем статус платежа
+        if data.get("status") == "success":
+            # Платеж успешен, начисляем деньги на устройство
+            amount_kopeek = int(amount)
+            
+            # Отправляем команду на устройство через MQTT
+            topic = f"wsm/{device_id}/client/payment/set"
+            payload = json.dumps({
+                "request_id": 234,
+                "addQRcode": {
+                    "order_id": order_id,
+                    "amount": amount_kopeek
+                }
+            })
+            
+            # Публикуем в MQTT
+            client.publish(topic, payload)
+            
+            # Логируем успешную оплату
+            print(f"💰 Monobank payment success: device={device_id}, order={order_id}, amount={amount_kopeek/100} UAH")
+            
+            # Сохраняем информацию о платеже
+            if "monobank_payments" not in devices[device_id]:
+                devices[device_id]["monobank_payments"] = []
+                
+            payment_info = {
+                "order_id": order_id,
+                "amount": amount_kopeek,
+                "status": "success",
+                "timestamp": time.time(),
+                "invoice_id": data.get("invoiceId", "")
+            }
+            
+            devices[device_id]["monobank_payments"].append(payment_info)
+            
+            return jsonify({"status": "ok"}), 200
+        else:
+            # Платеж не успешен
+            print(f"❌ Monobank payment failed: device={device_id}, order={order_id}, status={data.get('status')}")
+            
+            # Сохраняем информацию о неудачном платеже
+            if "monobank_payments" not in devices[device_id]:
+                devices[device_id]["monobank_payments"] = []
+                
+            payment_info = {
+                "order_id": order_id,
+                "amount": int(amount),
+                "status": data.get("status", "failed"),
+                "timestamp": time.time(),
+                "invoice_id": data.get("invoiceId", "")
+            }
+            
+            devices[device_id]["monobank_payments"].append(payment_info)
+            
+            return jsonify({"status": "failed"}), 200
+            
+    except Exception as e:
+        print(f"❌ Error processing Monobank webhook: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@api.route("/devices/<device_id>/monobank/payments", methods=["GET"])
+@login_required
+def get_monobank_payments(device_id):
+    """Получение истории платежей через Monobank"""
+    if device_id not in devices:
+        return jsonify({"error": "Device not found"}), 404
+    
+    payments = devices.get(device_id, {}).get("monobank_payments", [])
+    return jsonify({"payments": payments})
