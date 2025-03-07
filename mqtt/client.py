@@ -44,7 +44,7 @@ def on_message(client, userdata, msg):
                 "action_ack": None,
                 "display": None,
                 "denomination": [],
-                "monobank_api_key": "",
+                 "monobank_api_key": Config.DEFAULT_MONOBANK_API_KEY, 
                 "monobank_payments": []
             }
 
@@ -220,29 +220,30 @@ def request_display_info(device_id):
 
 def send_qrcode_payment(device_id, order_id, amount):
     """Отправка оплаты QR-кодом в устройство."""
+    if not check_mqtt_connection():
+        print("❌ Cannot send payment: MQTT not connected")
+        return False
+        
     if device_id in devices:
         topic = f"wsm/{device_id}/client/payment/set"
-        payload = json.dumps({
+        payload = {
             "request_id": 234,
             "addQRcode": {
                 "order_id": order_id,
                 "amount": amount
             }
-        })
-        print(f"📤 Sending QR code payment to {device_id}: {amount} kopecks, order_id: {order_id}")
-        client.publish(topic, payload)
+        }
         
-        # Добавляем информацию о платеже Monobank
-        if "monobank_payments" not in devices[device_id]:
-            devices[device_id]["monobank_payments"] = []
-            
-        # Добавляем платеж в статусе "pending" (ожидание подтверждения)
-        devices[device_id]["monobank_payments"].append({
-            "order_id": order_id,
-            "amount": amount,
-            "status": "pending",
-            "timestamp": time.time()
-        })
+        mqtt_payload = json.dumps(payload)
+        print(f"📤 Sending QR code payment to {device_id}: {amount} kopecks, order_id: {order_id}")
+        print(f"📦 Full payload: {mqtt_payload}")
+        
+        result = client.publish(topic, mqtt_payload)
+        if result.rc == 0:
+            print(f"✅ MQTT message sent successfully")
+        else:
+            print(f"❌ MQTT publish failed with code {result.rc}")
+            return False
 
 def send_free_payment(device_id, amount):
     """Отправка свободного начисления в устройство."""

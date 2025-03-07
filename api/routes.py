@@ -331,68 +331,68 @@ def update_device_monobank_api_key(device_id):
 @api.route("/webhook/monobank/<device_id>/<order_id>/<amount>", methods=["POST"])
 def monobank_webhook(device_id, order_id, amount):
     """Обработчик вебхука от Monobank"""
+    print(f"🔍 Webhook received: device={device_id}, order={order_id}, amount={amount}")
+    
     try:
         # Получаем данные от Monobank
         data = request.json
+        print(f"📌 Webhook data: {json.dumps(data)}")
         
         # Проверяем статус платежа
         if data.get("status") == "success":
             # Платеж успешен, начисляем деньги на устройство
             amount_kopeek = int(amount)
             
-            # Отправляем команду на устройство через MQTT
+            # Формируем сообщение для MQTT в точном соответствии с требуемым форматом
             topic = f"wsm/{device_id}/client/payment/set"
-            payload = json.dumps({
+            payload = {
                 "request_id": 234,
                 "addQRcode": {
                     "order_id": order_id,
                     "amount": amount_kopeek
                 }
-            })
+            }
+            
+            # Преобразуем в JSON строку для отправки
+            mqtt_payload = json.dumps(payload)
+            
+            print(f"🚀 Sending MQTT message to topic: {topic}")
+            print(f"📦 Payload: {mqtt_payload}")
             
             # Публикуем в MQTT
-            client.publish(topic, payload)
+            result = client.publish(topic, mqtt_payload)
+            print(f"📢 MQTT publish result: {result}")
             
             # Логируем успешную оплату
             print(f"💰 Monobank payment success: device={device_id}, order={order_id}, amount={amount_kopeek/100} UAH")
             
             # Сохраняем информацию о платеже
-            if "monobank_payments" not in devices[device_id]:
-                devices[device_id]["monobank_payments"] = []
+            if device_id in devices:
+                if "monobank_payments" not in devices[device_id]:
+                    devices[device_id]["monobank_payments"] = []
+                    
+                payment_info = {
+                    "order_id": order_id,
+                    "amount": amount_kopeek,
+                    "status": "success",
+                    "timestamp": time.time(),
+                    "invoice_id": data.get("invoiceId", "")
+                }
                 
-            payment_info = {
-                "order_id": order_id,
-                "amount": amount_kopeek,
-                "status": "success",
-                "timestamp": time.time(),
-                "invoice_id": data.get("invoiceId", "")
-            }
-            
-            devices[device_id]["monobank_payments"].append(payment_info)
+                devices[device_id]["monobank_payments"].append(payment_info)
+            else:
+                print(f"⚠️ Device {device_id} not found in devices dictionary")
             
             return jsonify({"status": "ok"}), 200
         else:
             # Платеж не успешен
             print(f"❌ Monobank payment failed: device={device_id}, order={order_id}, status={data.get('status')}")
-            
-            # Сохраняем информацию о неудачном платеже
-            if "monobank_payments" not in devices[device_id]:
-                devices[device_id]["monobank_payments"] = []
-                
-            payment_info = {
-                "order_id": order_id,
-                "amount": int(amount),
-                "status": data.get("status", "failed"),
-                "timestamp": time.time(),
-                "invoice_id": data.get("invoiceId", "")
-            }
-            
-            devices[device_id]["monobank_payments"].append(payment_info)
-            
             return jsonify({"status": "failed"}), 200
             
     except Exception as e:
+        import traceback
         print(f"❌ Error processing Monobank webhook: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 @api.route("/devices/<device_id>/monobank/payments", methods=["GET"])
