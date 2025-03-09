@@ -385,7 +385,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
     }
-
+    // Функция для заполнения формы эквайринга
+    function fillAcquiringForm(data) {
+        document.getElementById('monobank_api_key').value = data.monobank_api_key || '';
+    }
     // Функция для проверки ACK перезагрузки
     function checkRebootAck() {
         fetch(`/api/devices/${deviceId}/reboot/ack`)

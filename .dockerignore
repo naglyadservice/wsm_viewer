@@ -1,0 +1,31 @@
+# Виртуальное окружение
+venv/
+env/
+.env
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Локальная база данных
+*.db
+*.sqlite3
+
+# Логи
+*.log
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -43,7 +43,9 @@ def on_message(client, userdata, msg):
                 "payment_ack": None,
                 "action_ack": None,
                 "display": None,
-                "denomination": []
+                "denomination": [],
+                 "monobank_api_key": Config.DEFAULT_MONOBANK_API_KEY, 
+                "monobank_payments": []
             }
 
         request_id = payload.get("request_id", 234)
@@ -64,6 +66,11 @@ def on_message(client, userdata, msg):
         elif topic.endswith("/server/config"):
             payload["request_id"] = request_id
             payload["received_at"] = time.time()  # Добавляем временную метку
+            
+            # Сохраняем API-ключ Monobank, если он был ранее настроен
+            if "monobank_api_key" in devices[device_id]:
+                payload["monobank_api_key"] = devices[device_id]["monobank_api_key"]
+                
             devices[device_id]["config"] = payload
             print(f"🔧 Config received for {device_id}")
 
@@ -100,6 +107,16 @@ def on_message(client, userdata, msg):
         elif topic.endswith("/server/payment/ack"):
             devices[device_id]["payment_ack"] = payload
             print(f"💰 Payment ACK received for {device_id}: {payload}")
+            
+            # Проверяем, не был ли это платеж Monobank
+            if payload.get("code") == 0 and "monobank_payments" in devices[device_id]:
+                pending_payments = [p for p in devices[device_id]["monobank_payments"] 
+                                    if p.get("status") == "pending"]
+                if pending_payments:
+                    # Обновляем статус первого ожидающего платежа
+                    pending_payments[0]["status"] = "confirmed"
+                    pending_payments[0]["confirmed_at"] = time.time()
+                    print(f"💰 Monobank payment confirmed for {device_id}: {pending_payments[0]}")
 
         # Обработка подтверждения действия
         elif topic.endswith("/server/action/ack"):
@@ -142,6 +159,12 @@ def update_device_config(device_id, new_config):
     if device_id in devices and "config" in devices[device_id]:
         topic = f"wsm/{device_id}/client/config/set"
         
+        # Сохраняем API-ключ Monobank перед отправкой, если он есть в новой конфигурации
+        if "monobank_api_key" in new_config:
+            update_monobank_api_key(device_id, new_config["monobank_api_key"])
+            # Удаляем API-ключ из конфигурации перед отправкой в устройство
+            del new_config["monobank_api_key"]
+        
         # Преобразование строк в массивы для таблиц номиналов если нужно
         for key in ['bill_table', 'coin_table']:
             if key in new_config and isinstance(new_config[key], str):
@@ -163,6 +186,17 @@ def update_device_config(device_id, new_config):
         payload = json.dumps(new_config)
         print(f"📤 Sending updated config to {device_id}: {new_config}")
         client.publish(topic, payload)
+
+def update_monobank_api_key(device_id, api_key):
+    """Обновление API-ключа Monobank для устройства."""
+    if device_id in devices:
+        # Сохраняем API-ключ во внутреннем хранилище, не отправляя его на устройство
+        devices[device_id]["monobank_api_key"] = api_key
+        print(f"🔑 Monobank API key updated for {device_id}")
+        
+        # Если в конфигурации еще нет поля API-ключа, добавляем его
+        if "config" in devices[device_id]:
+            devices[device_id]["config"]["monobank_api_key"] = api_key
 
 def send_reboot_command(device_id, delay):
     """Отправка команды на перезагрузку устройства."""
@@ -186,17 +220,30 @@ def request_display_info(device_id):
 
 def send_qrcode_payment(device_id, order_id, amount):
     """Отправка оплаты QR-кодом в устройство."""
+    if not check_mqtt_connection():
+        print("❌ Cannot send payment: MQTT not connected")
+        return False
+        
     if device_id in devices:
         topic = f"wsm/{device_id}/client/payment/set"
-        payload = json.dumps({
+        payload = {
             "request_id": 234,
             "addQRcode": {
                 "order_id": order_id,
                 "amount": amount
             }
-        })
+        }
+        
+        mqtt_payload = json.dumps(payload)
         print(f"📤 Sending QR code payment to {device_id}: {amount} kopecks, order_id: {order_id}")
-        client.publish(topic, payload)
+        print(f"📦 Full payload: {mqtt_payload}")
+        
+        result = client.publish(topic, mqtt_payload)
+        if result.rc == 0:
+            print(f"✅ MQTT message sent successfully")
+        else:
+            print(f"❌ MQTT publish failed with code {result.rc}")
+            return False
 
 def send_free_payment(device_id, amount):
     """Отправка свободного начисления в устройство."""
@@ -246,6 +293,12 @@ def send_action_command(device_id, pour=None, blocking=None):
             
         print(f"📤 Sending action command to {device_id}: {payload}")
         client.publish(topic, json.dumps(payload))
+
+def get_monobank_payments_history(device_id):
+    """Получение истории платежей Monobank."""
+    if device_id in devices:
+        return devices[device_id].get("monobank_payments", [])
+    return []
 
 # Инициализация MQTT-клиента
 client = mqtt.Client()
