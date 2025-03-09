@@ -78,35 +78,41 @@
       <ul class="nav nav-tabs" id="deviceTabs" role="tablist">
         <li class="nav-item">
           <a class="nav-link active" id="state-tab" data-toggle="tab" href="#state" role="tab">
-            <span class="d-none d-sm-inline-block">Состояние</span>
-            <i class="d-sm-none bi bi-info-circle"></i>
+            <i class="bi bi-info-circle"></i>
+            <span class="d-none d-lg-inline-block ml-1">Состояние</span>
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link" id="settings-tab" data-toggle="tab" href="#settings" role="tab">
-            <span class="d-none d-sm-inline-block">Настройки</span>
-            <i class="d-sm-none bi bi-sliders"></i>
+            <i class="bi bi-sliders"></i>
+            <span class="d-none d-lg-inline-block ml-1">Настройки</span>
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link" id="config-tab" data-toggle="tab" href="#config" role="tab">
-            <span class="d-none d-sm-inline-block">Конфигурация</span>
-            <i class="d-sm-none bi bi-gear"></i>
+            <i class="bi bi-gear"></i>
+            <span class="d-none d-lg-inline-block ml-1">Конфигурация</span>
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link" id="control-tab" data-toggle="tab" href="#control" role="tab">
-            <span class="d-none d-sm-inline-block">Управление</span>
-            <i class="d-sm-none bi bi-wrench"></i>
+            <i class="bi bi-wrench"></i>
+            <span class="d-none d-lg-inline-block ml-1">Управление</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" id="acquiring-tab" data-toggle="tab" href="#acquiring" role="tab">
+            <i class="bi bi-credit-card"></i>
+            <span class="d-none d-lg-inline-block ml-1">Эквайринг</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" id="acquiring-tab" data-toggle="tab" href="#statistics" role="tab">
+            <i class="bi bi-list-ul"></i>
+            <span class="d-none d-lg-inline-block ml-1">Статистика</span>
           </a>
         </li>
       </ul>
-      <li class="nav-item">
-        <a class="nav-link" id="acquiring-tab" data-toggle="tab" href="#acquiring" role="tab">
-          <span class="d-none d-sm-inline-block">Эквайринг</span>
-          <i class="d-sm-none bi bi-credit-card"></i>
-        </a>
-      </li>
 
       <div class="tab-content" id="deviceTabsContent">
         <!-- Вкладка состояния -->
@@ -643,151 +649,160 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-    <!-- Вкладка Эквайринг -->
-<div class="tab-pane fade" id="acquiring" role="tabpanel">
-  <div class="row">
-    <div class="col-12 mb-3">
-      <div class="card">
-        <div class="card-header bg-primary text-white">
-          Настройки эквайринга
-        </div>
-        <div class="card-body">
-          <form id="acquiring-form">
-            <div class="form-group">
-              <label for="monobank_api_key">Monobank API Key</label>
-              <input type="text" class="form-control" id="monobank_api_key" name="monobank_api_key">
-              <small class="form-text text-muted">API ключ для интеграции с Monobank</small>
+
+        <!-- Вкладка Эквайринг -->
+        <div class="tab-pane fade" id="acquiring" role="tabpanel">
+          <div class="row">
+            <div class="col-12 mb-3">
+              <div class="card">
+                <div class="card-header bg-primary text-white">
+                  Настройки эквайринга
+                </div>
+                <div class="card-body">
+                  <form id="acquiring-form">
+                    <div class="form-group">
+                      <label for="monobank_api_key">Monobank API Key</label>
+                      <input type="text" class="form-control" id="monobank_api_key" name="monobank_api_key">
+                      <small class="form-text text-muted">API ключ для интеграции с Monobank</small>
+                    </div>
+                    <button type="button" id="btn-save-acquiring" class="btn btn-success">Сохранить</button>
+                  </form>
+                </div>
+              </div>
             </div>
-            <button type="button" id="btn-save-acquiring" class="btn btn-success">Сохранить</button>
-          </form>
+
+            <div class="col-12 mb-3">
+              <div class="card">
+                <div class="card-header bg-info text-white">
+                  Оплата Monobank
+                </div>
+                <div class="card-body">
+                  <p>Для приема платежей через Monobank можно использовать публичную страницу оплаты:</p>
+
+                  <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="payment-url" readonly value="{{ request.url_root }}monopay/{{ device_id }}">
+                    <div class="input-group-append">
+                      <button class="btn btn-outline-secondary" type="button" id="copy-url-btn">
+                        <i class="bi bi-clipboard"></i> Копировать
+                      </button>
+                    </div>
+                  </div>
+
+                  <p>Отсканируйте QR-код для перехода на страницу оплаты:</p>
+                  <div class="text-center mb-3">
+                    <div id="monobank-qr" class="d-inline-block"></div>
+                  </div>
+                  <div class="text-center">
+                    <a id="monobank-payment-link" href="/monopay/{{device_id}}" target="_blank" class="btn btn-primary">
+                      <i class="bi bi-credit-card"></i> Открыть страницу оплаты
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="card">
+                <div class="card-header bg-success text-white">
+                  Статистика платежей
+                </div>
+                <div class="card-body">
+                  <p>Скоро здесь появится статистика платежей через Monobank.</p>
+                  <!-- Здесь будет добавлена статистика платежей в будущем -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Вкладка Статистика -->
+        <div class="tab-pane fade" id="statistics" role="tabpanel">
+          <div class="row">
+            <div class="col-12 mb-3">
+              <h2>Статистика</h2>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="col-12 mb-3">
-      <div class="card">
-        <div class="card-header bg-info text-white">
-          Оплата Monobank
-        </div>
-        <div class="card-body">
-          <p>Для приема платежей через Monobank можно использовать публичную страницу оплаты:</p>
-          
-          <div class="input-group mb-3">
-            <input type="text" class="form-control" id="payment-url" readonly value="{{ request.url_root }}monopay/{{ device_id }}">
-            <div class="input-group-append">
-              <button class="btn btn-outline-secondary" type="button" id="copy-url-btn">
-                <i class="bi bi-clipboard"></i> Копировать
-              </button>
-            </div>
-          </div>
-          
-          <p>Отсканируйте QR-код для перехода на страницу оплаты:</p>
-          <div class="text-center mb-3">
-            <div id="monobank-qr" class="d-inline-block"></div>
-          </div>
-          <div class="text-center">
-            <a id="monobank-payment-link" href="/monopay/{{device_id}}" target="_blank" class="btn btn-primary">
-              <i class="bi bi-credit-card"></i> Открыть страницу оплаты
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <div class="col-12">
-      <div class="card">
-        <div class="card-header bg-success text-white">
-          Статистика платежей
-        </div>
-        <div class="card-body">
-          <p>Скоро здесь появится статистика платежей через Monobank.</p>
-          <!-- Здесь будет добавлена статистика платежей в будущем -->
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script src="/static/js/device.js"></script>
-  
-  <!-- QR Code library -->
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    // Generate QR code for Monobank payment
-    const qrContainer = document.getElementById('monobank-qr');
-    const paymentLink = document.getElementById('monobank-payment-link').href;
-    
-    if (qrContainer && paymentLink) {
-      new QRCode(qrContainer, {
-        text: window.location.origin + paymentLink,
-        width: 160,
-        height: 160,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
-      });
-    }
-    
-    // Copy URL button
-    const copyUrlBtn = document.getElementById('copy-url-btn');
-    if (copyUrlBtn) {
-      copyUrlBtn.addEventListener('click', function() {
-        const paymentUrl = document.getElementById('payment-url');
-        paymentUrl.select();
-        document.execCommand('copy');
-        
-        // Показываем уведомление о копировании
-        this.innerHTML = '<i class="bi bi-check"></i> Скопировано';
-        setTimeout(() => {
-          this.innerHTML = '<i class="bi bi-clipboard"></i> Копировать';
-        }, 2000);
-      });
-    }
-    
-    // Save acquiring settings
-    const btnSaveAcquiring = document.getElementById('btn-save-acquiring');
-    if (btnSaveAcquiring) {
-      btnSaveAcquiring.addEventListener('click', function() {
-        // Сохраняем данные через обновление конфигурации устройства
-        const monobankApiKey = document.getElementById('monobank_api_key').value;
-        
-        // Получаем текущую конфигурацию
-        fetch(`/api/devices/${deviceId}/config`)
-          .then(response => response.json())
-          .then(config => {
-            // Обновляем только API ключ
-            config.monobank_api_key = monobankApiKey;
-            
-            // Отправляем обновленную конфигурацию
-            return fetch(`/api/devices/${deviceId}/config`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(config),
-            });
-          })
-          .then(response => response.json())
-          .then(data => {
-            showMessage('Настройки эквайринга сохранены');
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            showError('Ошибка при сохранении настроек эквайринга: ' + error.message);
+
+    <!-- QR Code library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        // Generate QR code for Monobank payment
+        const qrContainer = document.getElementById('monobank-qr');
+        const paymentLink = document.getElementById('monobank-payment-link').href;
+
+        if (qrContainer && paymentLink) {
+          new QRCode(qrContainer, {
+            text: window.location.origin + paymentLink,
+            width: 160,
+            height: 160,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
           });
+        }
+
+        // Copy URL button
+        const copyUrlBtn = document.getElementById('copy-url-btn');
+        if (copyUrlBtn) {
+          copyUrlBtn.addEventListener('click', function () {
+            const paymentUrl = document.getElementById('payment-url');
+            paymentUrl.select();
+            document.execCommand('copy');
+
+            // Показываем уведомление о копировании
+            this.innerHTML = '<i class="bi bi-check"></i> Скопировано';
+            setTimeout(() => {
+              this.innerHTML = '<i class="bi bi-clipboard"></i> Копировать';
+            }, 2000);
+          });
+        }
+
+        // Save acquiring settings
+        const btnSaveAcquiring = document.getElementById('btn-save-acquiring');
+        if (btnSaveAcquiring) {
+          btnSaveAcquiring.addEventListener('click', function () {
+            // Сохраняем данные через обновление конфигурации устройства
+            const monobankApiKey = document.getElementById('monobank_api_key').value;
+
+            // Получаем текущую конфигурацию
+            fetch(`/api/devices/${deviceId}/config`)
+              .then(response => response.json())
+              .then(config => {
+                // Обновляем только API ключ
+                config.monobank_api_key = monobankApiKey;
+
+                // Отправляем обновленную конфигурацию
+                return fetch(`/api/devices/${deviceId}/config`, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(config),
+                });
+              })
+              .then(response => response.json())
+              .then(data => {
+                showMessage('Настройки эквайринга сохранены');
+              })
+              .catch(error => {
+                console.error('Error:', error);
+                showError('Ошибка при сохранении настроек эквайринга: ' + error.message);
+              });
+          });
+        }
       });
-    }
-  });
-</script>
-  
-  
-  
-  
+    </script>
   </body>
 
 </html>
