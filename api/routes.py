@@ -1,17 +1,43 @@
-from flask import Blueprint, jsonify, request
-from flask_login import login_required
-import time
-import json
+from flask import Blueprint, jsonify, request, current_app
+from flask_login import login_required, current_user
+from config import Config
+import time  
+import uuid  #импорт для генерации уникальных идентификаторов
+import json 
+from db.models import Sale
+
+
+# Импорты для работы с устройствами и MQTT
 from mqtt.client import (
     devices,
     client,
+    send_qrcode_payment,
+    send_free_payment,
+    clear_payment,
+    send_action_command,
+    get_monobank_payments_history,
     request_device_settings,
     request_device_config,
     update_device_settings,
     update_device_config,
     send_reboot_command,
-    get_device_state,
-    update_monobank_api_key
+    request_display_info
+)
+
+# Импорты для работы с базой данных и утилитами
+from db.utils import (
+    get_device,
+    get_all_devices,
+    get_latest_device_state,
+    get_latest_device_settings,
+    get_latest_device_config,
+    get_device_payments,
+    get_device_sales,
+    get_device_collections,
+    update_monobank_api_key,
+    get_monobank_api_key,
+    get_latest_display_info,
+    get_latest_ack_message
 )
 
 api = Blueprint("api", __name__)
@@ -20,12 +46,27 @@ api = Blueprint("api", __name__)
 @login_required
 def get_devices():
     """Получение списка найденных устройств"""
-    return jsonify({"devices": list(devices.keys())})
+    # Получаем устройства из БД
+    db_devices = get_all_devices()
+    device_ids = [device.id for device in db_devices]
+    
+    # Дополняем списком из памяти для обратной совместимости
+    for device_id in devices.keys():
+        if device_id not in device_ids:
+            device_ids.append(device_id)
+            
+    return jsonify({"devices": device_ids})
 
 @api.route("/devices/<device_id>/settings", methods=["GET"])
 @login_required
 def get_device_settings(device_id):
     """Получение текущих настроек устройства"""
+    # Пытаемся получить настройки из БД
+    db_settings = get_latest_device_settings(device_id)
+    if db_settings:
+        return jsonify(db_settings.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "settings" in devices[device_id]:
         settings = devices[device_id]["settings"]
         
@@ -37,9 +78,7 @@ def get_device_settings(device_id):
         if received_at > 0 and (current_time - received_at) < 60:
             return jsonify(settings)
             
-        # Настройки устарели или не были получены после запроса
-        return jsonify({"error": "Settings are outdated or not received yet"}), 404
-            
+    # Настройки не найдены или устарели
     return jsonify({"error": "Settings not available"}), 404
 
 @api.route("/devices/<device_id>/settings/request", methods=["GET"])
@@ -60,18 +99,26 @@ def request_settings(device_id):
 @login_required
 def get_settings_ack(device_id):
     """Получение подтверждения отправки настроек"""
+    # Пытаемся получить ACK из БД
+    ack = get_latest_ack_message(device_id, "setting")
+    if ack:
+        return jsonify(ack.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "setting_ack" in devices[device_id]:
         return jsonify(devices[device_id]["setting_ack"])
+        
     return jsonify({"error": "Settings ACK not available"}), 404
 
 @api.route("/devices/<device_id>/settings", methods=["PUT"])
 @login_required
 def update_settings(device_id):
     """Обновление настроек устройства"""
-    if device_id not in devices or "settings" not in devices[device_id]:
-        return jsonify({"error": "Device not found or settings unavailable"}), 404
+    if device_id not in devices:
+        return jsonify({"error": "Device not found"}), 404
 
     new_settings = request.json
+    
     # Очистка ACK перед отправкой новых настроек
     if "setting_ack" in devices[device_id]:
         devices[device_id]["setting_ack"] = None
@@ -83,6 +130,12 @@ def update_settings(device_id):
 @login_required
 def get_device_config(device_id):
     """Получение конфигурации устройства"""
+    # Пытаемся получить конфигурацию из БД
+    db_config = get_latest_device_config(device_id)
+    if db_config:
+        return jsonify(db_config.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "config" in devices[device_id]:
         config = devices[device_id]["config"]
         
@@ -94,9 +147,7 @@ def get_device_config(device_id):
         if received_at > 0 and (current_time - received_at) < 60:
             return jsonify(config)
             
-        # Конфигурация устарела или не была получена после запроса
-        return jsonify({"error": "Configuration is outdated or not received yet"}), 404
-            
+    # Конфигурация не найдена или устарела
     return jsonify({"error": "Config not available"}), 404
 
 @api.route("/devices/<device_id>/config/request", methods=["GET"])
@@ -117,26 +168,41 @@ def request_config(device_id):
 @login_required
 def get_config_ack(device_id):
     """Получение подтверждения отправки конфигурации"""
+    # Пытаемся получить ACK из БД
+    ack = get_latest_ack_message(device_id, "config")
+    if ack:
+        return jsonify(ack.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "config_ack" in devices[device_id]:
         return jsonify(devices[device_id]["config_ack"])
+        
     return jsonify({"error": "Config ACK not available"}), 404
 
 @api.route("/devices/<device_id>/reboot/ack", methods=["GET"])
 @login_required
 def get_reboot_ack(device_id):
     """Получение подтверждения перезагрузки"""
+    # Пытаемся получить ACK из БД
+    ack = get_latest_ack_message(device_id, "reboot")
+    if ack:
+        return jsonify(ack.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "reboot_ack" in devices[device_id]:
         return jsonify(devices[device_id]["reboot_ack"])
+        
     return jsonify({"error": "Reboot ACK not available"}), 404
 
 @api.route("/devices/<device_id>/config", methods=["PUT"])
 @login_required
 def update_config(device_id):
     """Отправка новой конфигурации в устройство"""
-    if device_id not in devices or "config" not in devices[device_id]:
-        return jsonify({"error": "Device not found or config unavailable"}), 404
+    if device_id not in devices:
+        return jsonify({"error": "Device not found"}), 404
 
     new_config = request.json
+    
     # Очистка ACK перед отправкой новой конфигурации
     if "config_ack" in devices[device_id]:
         devices[device_id]["config_ack"] = None
@@ -152,6 +218,7 @@ def reboot_device(device_id):
         return jsonify({"error": "Device not found"}), 404
 
     delay = request.json.get("delay", 400)  # Значение по умолчанию 400
+    
     # Очистка ACK перед отправкой команды перезагрузки
     if "reboot_ack" in devices[device_id]:
         devices[device_id]["reboot_ack"] = None
@@ -163,8 +230,15 @@ def reboot_device(device_id):
 @login_required
 def get_device_state_api(device_id):
     """Получение текущего состояния устройства"""
+    # Пытаемся получить состояние из БД
+    db_state = get_latest_device_state(device_id)
+    if db_state:
+        return jsonify(db_state.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and devices[device_id].get("state"):
         return jsonify(devices[device_id]["state"])
+        
     return jsonify({"error": "State not available"}), 404
 
 @api.route("/devices/<device_id>/denomination", methods=["GET"])
@@ -179,8 +253,15 @@ def get_device_denomination(device_id):
 @login_required
 def get_display_info(device_id):
     """Получение информации с дисплея"""
+    # Пытаемся получить информацию с дисплея из БД
+    db_display = get_latest_display_info(device_id)
+    if db_display:
+        return jsonify(db_display.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "display" in devices[device_id]:
         return jsonify(devices[device_id]["display"])
+        
     return jsonify({"error": "Display info not available"}), 404
 
 @api.route("/devices/<device_id>/display/request", methods=["GET"])
@@ -303,16 +384,30 @@ def send_action(device_id):
 @login_required
 def get_payment_ack(device_id):
     """Получение подтверждения платежа"""
+    # Пытаемся получить ACK из БД
+    ack = get_latest_ack_message(device_id, "payment")
+    if ack:
+        return jsonify(ack.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "payment_ack" in devices[device_id]:
         return jsonify(devices[device_id]["payment_ack"])
+        
     return jsonify({"error": "Payment ACK not available"}), 404
 
 @api.route("/devices/<device_id>/action/ack", methods=["GET"])
 @login_required
 def get_action_ack(device_id):
     """Получение подтверждения действия"""
+    # Пытаемся получить ACK из БД
+    ack = get_latest_ack_message(device_id, "action")
+    if ack:
+        return jsonify(ack.to_dict())
+    
+    # Если в БД нет, пробуем из памяти (обратная совместимость)
     if device_id in devices and "action_ack" in devices[device_id]:
         return jsonify(devices[device_id]["action_ack"])
+        
     return jsonify({"error": "Action ACK not available"}), 404
 
 @api.route("/devices/<device_id>/monobank/api-key", methods=["PUT"])
@@ -327,6 +422,66 @@ def update_device_monobank_api_key(device_id):
     
     update_monobank_api_key(device_id, api_key)
     return jsonify({"message": f"Monobank API key updated for {device_id}"})
+
+# Новые API-эндпоинты для продаж и инкассаций
+
+@api.route("/devices/<device_id>/sales", methods=["GET"])
+@login_required
+def get_sales(device_id):
+    sales = Sale.query.filter_by(device_id=device_id).distinct().all()
+    sales_data = []
+
+    for sale in sales:
+        sales_data.append({
+            "id": sale.id,
+            "created": sale.created.strftime('%d.%m.%Y %H:%M:%S'),
+            "sum": sale.add_coin + sale.add_bill + sale.add_qr + sale.add_pp + sale.add_free,
+            "liters": sale.out_liters_1 + sale.out_liters_2,
+            "payment_type": sale.payment_source,
+        })
+
+    return jsonify(sales_data)
+
+@api.route("/devices/<device_id>/sales/<int:sale_id>/ack", methods=["POST"])
+@login_required
+def resend_sale_ack(device_id, sale_id):
+    """Повторная отправка подтверждения получения продажи"""
+    success = send_sale_ack(device_id, sale_id)
+    if success:
+        return jsonify({"message": f"Sale ACK resent to {device_id} for sale ID {sale_id}"})
+    else:
+        return jsonify({"error": "Failed to send sale ACK"}), 500
+
+@api.route("/devices/<device_id>/collections", methods=["GET"])
+@login_required
+def get_collections(device_id):
+    """Получение списка инкассаций устройства"""
+    collections = get_device_collections(device_id)
+    return jsonify({
+        "collections": [collection.to_dict() for collection in collections],
+        "total": len(collections)
+    })
+
+@api.route("/devices/<device_id>/collections/<int:collection_id>/ack", methods=["POST"])
+@login_required
+def resend_collection_ack(device_id, collection_id):
+    """Повторная отправка подтверждения получения инкассации"""
+    success = send_collection_ack(device_id, collection_id)
+    if success:
+        return jsonify({"message": f"Collection ACK resent to {device_id} for collection ID {collection_id}"})
+    else:
+        return jsonify({"error": "Failed to send collection ACK"}), 500
+
+@api.route("/devices/<device_id>/payments", methods=["GET"])
+@login_required
+def get_payments(device_id):
+    """Получение списка всех платежей устройства"""
+    payment_type = request.args.get("type")
+    payments = get_device_payments(device_id, payment_type)
+    return jsonify({
+        "payments": [payment.to_dict() for payment in payments],
+        "total": len(payments)
+    })
 
 @api.route("/webhook/monobank/<device_id>/<order_id>/<amount>", methods=["POST"])
 def monobank_webhook(device_id, order_id, amount):

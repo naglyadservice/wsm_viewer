@@ -15,7 +15,7 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(16))
 
     # Добавляем параметр БД
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///wsm_viewer.db")
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///instance/wsm_viewer_app.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False  # Отключаем предупреждения
     # API ключ Monobank по умолчанию
     DEFAULT_MONOBANK_API_KEY = os.getenv("MONOBANK_API_KEY", "")

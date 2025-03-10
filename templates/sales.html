@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Продажи устройства {{device_id}} - WSM Viewer</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+  <style>
+    html,
+    body {
+      min-width: 400px;
+    }
+
+    .card-header {
+      font-weight: bold;
+    }
+
+    .table th {
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 10;
+    }
+
+    .nav-tabs {
+      margin-bottom: 20px;
+    }
+
+    .card-body {
+      overflow-x: auto;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Навигационная панель -->
+  <nav class="py-3 bg-primary">
+    <div class="container">
+      <div class="row">
+        <div class="col-12">
+          <div class="d-flex justify-content-between align-items-center">
+            <a class="text-white h4" href="/">WSM Viewer</a>
+            <a class="text-white" href="{{ url_for('logout') }}">Выход</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container my-4" id="device-container" data-device-id="{{device_id}}">
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Главная</a></li>
+        <li class="breadcrumb-item"><a href="/device/{{device_id}}">Устройство {{device_id}}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Продажи</li>
+      </ol>
+    </nav>
+
+    <div class="alert alert-success d-none" id="success-message"></div>
+    <div class="alert alert-danger d-none" id="error-message"></div>
+
+    <div class="card mb-4">
+      <div class="card-header bg-primary text-white">
+        <div class="d-flex justify-content-between align-items-center">
+          <span>Продажи устройства {{device_id}}</span>
+          <button id="btn-refresh" class="btn btn-sm btn-light"><i class="bi bi-arrow-clockwise"></i> Обновить</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="sales-container">
+          <p class="text-center">Загрузка данных...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модальное окно для просмотра деталей продажи -->
+    <div class="modal fade" id="saleDetailsModal" tabindex="-1" role="dialog" aria-labelledby="saleDetailsModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="saleDetailsModalLabel">Детали продажи</h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div class="modal-body" id="sale-details-container">
+            <!-- Содержимое будет заполнено JavaScript -->
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">Закрыть</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const deviceId = document.getElementById('device-container').dataset.deviceId;
+
+      // Загрузка продаж
+      function loadSales() {
+        fetch(`/api/devices/${deviceId}/sales`)
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Не удалось получить данные о продажах');
+            }
+            return response.json();
+          })
+          .then(data => {
+            displaySales(data.sales);
+            showMessage(`Загружено ${data.total} продаж`);
+          })
+          .catch(error => {
+            console.error('Ошибка:', error);
+            showError(`Ошибка загрузки данных: ${error.message}`);
+          });
+      }
+
+      // Отображение списка продаж
+      function displaySales(sales) {
+        const container = document.getElementById('sales-container');
+        
+        if (!sales || sales.length === 0) {
+          container.innerHTML = '<p class="text-center">Нет данных о продажах</p>';
+          return;
+        }
+
+        let html = `
+          <table class="table table-striped table-bordered">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Дата/время</th>
+                <th>Тип</th>
+                <th>Сумма (грн)</th>
+                <th>Литры (л)</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        sales.forEach(sale => {
+          // Форматирование даты/времени
+          const created = new Date(sale.created);
+          const formattedDate = created.toLocaleDateString('ru-RU') + ' ' + created.toLocaleTimeString('ru-RU');
+          
+          // Расчет общей суммы в гривнах
+          const totalAmount = (sale.totalAmount / 100).toFixed(2);
+          
+          // Расчет литров
+          const totalLiters = (sale.totalLiters / 100).toFixed(2);
+          
+          html += `
+            <tr>
+              <td>${sale.external_id || sale.id}</td>
+              <td>${formattedDate}</td>
+              <td>${translatePaymentType(sale.payment_source)}</td>
+              <td>${totalAmount}</td>
+              <td>${totalLiters}</td>
+              <td>
+                <button class="btn btn-sm btn-info view-details" data-sale='${JSON.stringify(sale)}'>
+                  <i class="bi bi-info-circle"></i> Детали
+                </button>
+              </td>
+            </tr>
+          `;
+        });
+
+        html += `
+            </tbody>
+          </table>
+        `;
+
+        container.innerHTML = html;
+
+        // Обработчики для кнопок просмотра деталей
+        document.querySelectorAll('.view-details').forEach(button => {
+          button.addEventListener('click', function() {
+            const sale = JSON.parse(this.dataset.sale);
+            showSaleDetails(sale);
+          });
+        });
+      }
+
+      // Отображение деталей продажи в модальном окне
+      function showSaleDetails(sale) {
+        const container = document.getElementById('sale-details-container');
+        
+        // Форматирование даты/времени
+        const created = new Date(sale.created);
+        const formattedDate = created.toLocaleDateString('ru-RU') + ' ' + created.toLocaleTimeString('ru-RU');
+        
+        let html = `
+          <div class="row">
+            <div class="col-md-6">
+              <p><strong>ID продажи:</strong> ${sale.external_id || sale.id}</p>
+              <p><strong>Дата/время:</strong> ${formattedDate}</p>
+              <p><strong>Тип продажи:</strong> ${translateSaleType(sale.saleType)}</p>
+            </div>
+            <div class="col-md-6">
+              <p><strong>Устройство:</strong> ${sale.device_id}</p>
+              <p><strong>Общая сумма:</strong> ${(sale.totalAmount / 100).toFixed(2)} грн</p>
+              <p><strong>Выдано воды:</strong> ${(sale.totalLiters / 100).toFixed(2)} л</p>
+            </div>
+          </div>
+          
+          <hr>
+          
+          <h5>Детали платежа</h5>
+          <div class="row">
+            <div class="col-md-6">
+              <p><strong>Монеты:</strong> ${(sale.addCoin / 100).toFixed(2)} грн</p>
+              <p><strong>Купюры:</strong> ${(sale.addBill / 100).toFixed(2)} грн</p>
+              <p><strong>Предыдущий баланс:</strong> ${(sale.addPrev / 100).toFixed(2)} грн</p>
+            </div>
+            <div class="col-md-6">
+              <p><strong>Свободное начисление:</strong> ${(sale.addFree / 100).toFixed(2)} грн</p>
+              <p><strong>QR-код:</strong> ${(sale.add_QR / 100).toFixed(2)} грн</p>
+              <p><strong>PayPass:</strong> ${(sale.add_PP / 100).toFixed(2)} грн</p>
+            </div>
+          </div>
+          
+          <hr>
+          
+          <h5>Объемы воды</h5>
+          <div class="row">
+            <div class="col-md-6">
+              <p><strong>Вода 1:</strong> ${(sale.OutLiters_1 / 100).toFixed(2)} л</p>
+            </div>
+            <div class="col-md-6">
+              <p><strong>Вода 2:</strong> ${(sale.OutLiters_2 / 100).toFixed(2)} л</p>
+            </div>
+          </div>
+        `;
+        
+        // Информация о карте, если есть
+        if (sale.cardCode) {
+          html += `
+            <hr>
+            
+            <h5>Информация о карте</h5>
+            <div class="row">
+              <div class="col-md-6">
+                <p><strong>Код карты:</strong> ${sale.cardCode}</p>
+              </div>
+              <div class="col-md-6">
+                <p><strong>Баланс до:</strong> ${sale.cardBalanceIn ? (sale.cardBalanceIn / 100).toFixed(2) + ' грн' : 'Нет данных'}</p>
+                <p><strong>Баланс после:</strong> ${sale.cardBalanceOut ? (sale.cardBalanceOut / 100).toFixed(2) + ' грн' : 'Нет данных'}</p>
+              </div>
+            </div>
+          `;
+        }
+        
+        container.innerHTML = html;
+        $('#saleDetailsModal').modal('show');
+      }
+
+      // Вспомогательные функции
+      function showMessage(message) {
+        const messageEl = document.getElementById('success-message');
+        messageEl.textContent = message;
+        messageEl.classList.remove('d-none');
+        
+        // Автоматически скрываем через 5 секунд
+        setTimeout(() => {
+          messageEl.classList.add('d-none');
+        }, 5000);
+      }
+      
+      function showError(message) {
+        const errorEl = document.getElementById('error-message');
+        errorEl.textContent = message;
+        errorEl.classList.remove('d-none');
+      }
+      
+      function hideError() {
+        document.getElementById('error-message').classList.add('d-none');
+      }
+
+      function translatePaymentType(type) {
+         const types = {
+        'cash_coin': 'Монеты',
+        'cash_bill': 'Купюры',
+        'qr_code': 'QR-код',
+        'paypass': 'PayPass',
+        'free_credit': 'Свободное начисление',
+        'unknown': 'Неизвестно'
+       };
+       return types[type] || type || 'Неизвестный';
+      }
+
+      // Перевод типа продажи
+      function translateSaleType(type) {
+        const types = {
+          'money': 'За наличные',
+          'paypass': 'PayPass',
+          'card': 'По карте',
+          'bonus': 'Бонусная'
+        };
+        return types[type] || type || 'Неизвестный';
+      }
+
+      // Обработчик кнопки обновления
+      document.getElementById('btn-refresh').addEventListener('click', loadSales);
+
+      // Начальная загрузка данных
+      loadSales();
+    });
+  </script>
+</body>
+
+</html>

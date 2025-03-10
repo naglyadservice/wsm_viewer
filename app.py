@@ -1,25 +1,35 @@
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import login_user, logout_user, login_required, current_user
+
 from config import Config
 from api.routes import api
 from mqtt.client import devices, client  # Запускаем MQTT при старте
 from auth import init_auth, User, users, check_auth
+from db.database import init_db, db
+from db.models import db
 import requests
 import uuid
 import json
+import logging
 from datetime import datetime, timedelta
-
+from flask_migrate import Migrate
 # Инициализация Flask-приложения
 app = Flask(__name__, static_folder='static')
 app.config.from_object(Config)
 app.config['JSON_AS_ASCII'] = False  # Для корректной работы с кириллицей
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
+
 # Секретный ключ для сессий
 app.secret_key = Config.SECRET_KEY
 
-# Инициализация базы данных (пока не используется, но может пригодиться)
-# db = SQLAlchemy(app)
+# Инициализация базы данных
+init_db(app)
+migrate = Migrate(app, db)
+migrate.init_app(app, db)
 
 # Инициализация авторизации
 init_auth(app)
@@ -68,6 +78,22 @@ def device_page(device_id):
     if device_id not in devices:
         return "Device not found", 404
     return render_template("device.html", device_id=device_id)
+
+@app.route("/device/<device_id>/sales")
+@login_required
+def device_sales_page(device_id):
+    """Страница продаж устройства"""
+    if device_id not in devices:
+        return "Device not found", 404
+    return render_template("sales.html", device_id=device_id)
+
+@app.route("/device/<device_id>/collections")
+@login_required
+def device_collections_page(device_id):
+    """Страница инкассаций устройства"""
+    if device_id not in devices:
+        return "Device not found", 404
+    return render_template("collections.html", device_id=device_id)
 
 @app.route("/monopay/<device_id>", methods=["GET", "POST"])
 def monopay_page(device_id):
