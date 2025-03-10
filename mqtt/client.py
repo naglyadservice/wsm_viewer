@@ -1,13 +1,9 @@
 import paho.mqtt.client as mqtt
 import json
 import time
-import traceback
-from flask import current_app
 from config import Config
-from datetime import datetime
 
-# Словарь для хранения данных об устройствах в оперативной памяти
-# (для обратной совместимости с текущим кодом)
+# Словарь для хранения данных об устройствах
 devices = {}
 
 def on_connect(client, userdata, flags, rc):
@@ -20,206 +16,112 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     """Обработка входящих MQTT-сообщений."""
-    from app import app  # Импортируем внутри функции для избежания циклических импортов
-    from db.utils import (
-        get_or_create_device, update_device_last_seen, save_device_state,
-        save_device_settings, save_device_config, save_ack_message, 
-        save_display_info, save_payment, save_sale, save_collection,
-        get_monobank_api_key
-    )
+    topic = msg.topic
+    try:
+        payload = json.loads(msg.payload.decode("utf-8"))
+    except json.JSONDecodeError:
+        print(f"⚠️ JSON Decode Error: {msg.payload}")
+        return
 
-    # Создаем контекст приложения для каждого сообщения
-    with app.app_context():
-        topic = msg.topic
-        try:
-            payload = json.loads(msg.payload.decode("utf-8"))
-        except json.JSONDecodeError:
-            current_app.logger.warning(f"⚠️ JSON Decode Error: {msg.payload}")
+    print(f"📥 Received message: {topic} → {payload}")
+
+    if topic.startswith("wsm/"):
+        parts = topic.split("/")
+        if len(parts) < 3:
             return
 
-        print(f"📥 Received message: {topic} → {payload}")
+        device_id = parts[1]
 
-        if topic.startswith("wsm/"):
-            parts = topic.split("/")
-            if len(parts) < 3:
-                return
+        if device_id not in devices:
+            devices[device_id] = {
+                "settings": {}, 
+                "config": {}, 
+                "state": {}, 
+                "reboot_ack": None,
+                "setting_ack": None,
+                "config_ack": None,
+                "payment_ack": None,
+                "action_ack": None,
+                "display": None,
+                "denomination": [],
+                 "monobank_api_key": Config.DEFAULT_MONOBANK_API_KEY, 
+                "monobank_payments": []
+            }
 
-            device_id = parts[1]
+        request_id = payload.get("request_id", 234)
 
-            try:
-                # Обновляем время последнего обнаружения устройства
-                update_device_last_seen(device_id)
+        # Обработка состояния оборудования
+        if topic.endswith("/server/state/info"):
+            devices[device_id]["state"] = payload
+            print(f"🆕 State updated for {device_id}")
 
-                # Для обратной совместимости обновляем также кэш в памяти
-                if device_id not in devices:
-                    devices[device_id] = {
-                        "settings": {}, 
-                        "config": {}, 
-                        "state": {}, 
-                        "reboot_ack": None,
-                        "setting_ack": None,
-                        "config_ack": None,
-                        "payment_ack": None,
-                        "action_ack": None,
-                        "display": None,
-                        "denomination": [], 
-                        "monobank_api_key": Config.DEFAULT_MONOBANK_API_KEY, 
-                        "monobank_payments": []
-                    }
+        # Обработка настроек устройства
+        elif topic.endswith("/server/setting"):
+            payload["request_id"] = request_id
+            payload["received_at"] = time.time()  # Добавляем временную метку
+            devices[device_id]["settings"] = payload
+            print(f"⚙️ Settings received for {device_id}")
 
-                request_id = payload.get("request_id", 234)
+        # Обработка конфигурации устройства
+        elif topic.endswith("/server/config"):
+            payload["request_id"] = request_id
+            payload["received_at"] = time.time()  # Добавляем временную метку
+            
+            # Сохраняем API-ключ Monobank, если он был ранее настроен
+            if "monobank_api_key" in devices[device_id]:
+                payload["monobank_api_key"] = devices[device_id]["monobank_api_key"]
+                
+            devices[device_id]["config"] = payload
+            print(f"🔧 Config received for {device_id}")
 
-                # Обработка состояния оборудования
-                if topic.endswith("/server/state/info"):
-                    # Сохраняем в БД
-                    save_device_state(device_id, payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["state"] = payload
-                    print(f"🆕 State updated for {device_id}")
+        # Обработка подтверждения настроек
+        elif topic.endswith("/server/setting/ack"):
+            devices[device_id]["setting_ack"] = payload
+            print(f"⚙️ Settings ACK received for {device_id}: {payload}")
 
-                # Обработка настроек устройства
-                elif topic.endswith("/server/setting"):
-                    payload["request_id"] = request_id
-                    payload["received_at"] = time.time()  # Добавляем временную метку
-                    
-                    # Сохраняем в БД
-                    save_device_settings(device_id, payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["settings"] = payload
-                    print(f"⚙️ Settings received for {device_id}")
+        # Обработка подтверждения конфигурации
+        elif topic.endswith("/server/config/ack"):
+            devices[device_id]["config_ack"] = payload
+            print(f"🔧 Config ACK received for {device_id}: {payload}")
 
-                # Обработка конфигурации устройства
-                elif topic.endswith("/server/config"):
-                    payload["request_id"] = request_id
-                    payload["received_at"] = time.time()  # Добавляем временную метку
-                    
-                    # Добавляем API-ключ Monobank, если он есть в БД
-                    api_key = get_monobank_api_key(device_id)
-                    if api_key:
-                        payload["monobank_api_key"] = api_key
-                    
-                    # Сохраняем в БД
-                    save_device_config(device_id, payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["config"] = payload
-                    print(f"🔧 Config received for {device_id}")
+        # Обработка подтверждения перезагрузки
+        elif topic.endswith("/server/reboot/ack"):
+            devices[device_id]["reboot_ack"] = payload
+            print(f"🔄 Reboot ACK received for {device_id}")
+            request_device_settings(device_id)
+            request_device_config(device_id)
+            
+        # Обработка приема денег
+        elif topic.endswith("/server/denomination/info"):
+            if "denomination" not in devices[device_id]:
+                devices[device_id]["denomination"] = []
+            devices[device_id]["denomination"].append(payload)
+            print(f"💰 Denomination received for {device_id}: {payload}")
+            
+        # Обработка информации с дисплея
+        elif topic.endswith("/server/display"):
+            devices[device_id]["display"] = payload
+            print(f"📺 Display info received for {device_id}: {payload}")
 
-                # Обработка подтверждения настроек
-                elif topic.endswith("/server/setting/ack"):
-                    # Сохраняем в БД
-                    save_ack_message(device_id, "setting", payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["setting_ack"] = payload
-                    print(f"⚙️ Settings ACK received for {device_id}: {payload}")
+        # Обработка подтверждения платежа
+        elif topic.endswith("/server/payment/ack"):
+            devices[device_id]["payment_ack"] = payload
+            print(f"💰 Payment ACK received for {device_id}: {payload}")
+            
+            # Проверяем, не был ли это платеж Monobank
+            if payload.get("code") == 0 and "monobank_payments" in devices[device_id]:
+                pending_payments = [p for p in devices[device_id]["monobank_payments"] 
+                                    if p.get("status") == "pending"]
+                if pending_payments:
+                    # Обновляем статус первого ожидающего платежа
+                    pending_payments[0]["status"] = "confirmed"
+                    pending_payments[0]["confirmed_at"] = time.time()
+                    print(f"💰 Monobank payment confirmed for {device_id}: {pending_payments[0]}")
 
-                # Обработка подтверждения конфигурации
-                elif topic.endswith("/server/config/ack"):
-                    # Сохраняем в БД
-                    save_ack_message(device_id, "config", payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["config_ack"] = payload
-                    print(f"🔧 Config ACK received for {device_id}: {payload}")
-
-                # Обработка подтверждения перезагрузки
-                elif topic.endswith("/server/reboot/ack"):
-                    # Сохраняем в БД
-                    save_ack_message(device_id, "reboot", payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["reboot_ack"] = payload
-                    print(f"🔄 Reboot ACK received for {device_id}")
-                    request_device_settings(device_id)
-                    request_device_config(device_id)
-                    
-                # Обработка приема денег
-                elif topic.endswith("/server/denomination/info"):
-                    # Сохраняем в БД как платеж
-                    payment_type = None
-                    if payload.get("billValue"):
-                        payment_type = "bill"
-                        amount = payload.get("billValue")
-                    elif payload.get("coinValue"):
-                        payment_type = "coin"
-                        amount = payload.get("coinValue")
-                        
-                    if payment_type:
-                        save_payment(device_id, payment_type, amount, status='confirmed', confirmed_at=datetime.utcnow())
-                    
-                    # Обновляем кэш в памяти
-                    if "denomination" not in devices[device_id]:
-                        devices[device_id]["denomination"] = []
-                    devices[device_id]["denomination"].append(payload)
-                    print(f"💰 Denomination received for {device_id}: {payload}")
-                    
-                # Обработка информации с дисплея
-                elif topic.endswith("/server/display"):
-                    # Сохраняем в БД
-                    save_display_info(device_id, payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["display"] = payload
-                    print(f"📺 Display info received for {device_id}: {payload}")
-
-                # Обработка подтверждения платежа
-                elif topic.endswith("/server/payment/ack"):
-                    # Сохраняем в БД
-                    save_ack_message(device_id, "payment", payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["payment_ack"] = payload
-                    print(f"💰 Payment ACK received for {device_id}: {payload}")
-                    
-                    # Если это подтверждение платежа через Monobank
-                    if payload.get("code") == 0:
-                        # Находим и обновляем статус платежа
-                        # В реальной реализации нужно связать этот ACK с конкретным платежом
-                        # через order_id или другой идентификатор
-                        
-                        # Для обратной совместимости поддерживаем также кэш в памяти
-                        if "monobank_payments" in devices[device_id]:
-                            pending_payments = [p for p in devices[device_id]["monobank_payments"] 
-                                                if p.get("status") == "pending"]
-                            if pending_payments:
-                                # Обновляем статус первого ожидающего платежа
-                                pending_payments[0]["status"] = "confirmed"
-                                pending_payments[0]["confirmed_at"] = time.time()
-                                print(f"💰 Monobank payment confirmed for {device_id}: {pending_payments[0]}")
-
-                # Обработка подтверждения действия
-                elif topic.endswith("/server/action/ack"):
-                    # Сохраняем в БД
-                    save_ack_message(device_id, "action", payload)
-                    
-                    # Обновляем кэш в памяти
-                    devices[device_id]["action_ack"] = payload
-                    print(f"🔄 Action ACK received for {device_id}: {payload}")
-                    
-                # Обработка информации о продаже
-                elif topic.endswith("/server/sale/set"):
-                    # Сохраняем продажу в БД
-                    sale = save_sale(device_id, payload)
-                    print(f"💵 Sale received for {device_id}: {payload}")
-                    
-                    # Отправляем подтверждение получения продажи
-                    send_sale_ack(device_id, sale.external_id)
-                    
-                # Обработка информации об инкассации
-                elif topic.endswith("/server/incass/set"):
-                    # Сохраняем инкассацию в БД
-                    collection = save_collection(device_id, payload)
-                    print(f"💰 Collection received for {device_id}: {payload}")
-                    
-                    # Отправляем подтверждение получения инкассации
-                    send_collection_ack(device_id, collection.external_id)
-
-            except Exception as e:
-                current_app.logger.error(f"Error processing MQTT message: {e}")
-                current_app.logger.error(traceback.format_exc())
+        # Обработка подтверждения действия
+        elif topic.endswith("/server/action/ack"):
+            devices[device_id]["action_ack"] = payload
+            print(f"🔄 Action ACK received for {device_id}: {payload}")
 
 def request_device_settings(device_id):
     """Запрос настроек у устройства."""
@@ -254,8 +156,6 @@ def update_device_settings(device_id, new_settings):
 
 def update_device_config(device_id, new_config):
     """Отправка обновленной конфигурации в устройство."""
-    from db.utils import update_monobank_api_key
-
     if device_id in devices and "config" in devices[device_id]:
         topic = f"wsm/{device_id}/client/config/set"
         
@@ -287,72 +187,16 @@ def update_device_config(device_id, new_config):
         print(f"📤 Sending updated config to {device_id}: {new_config}")
         client.publish(topic, payload)
 
-import json
-from db.utils import get_sale, mark_sale_ack_sent
-from flask import current_app
-
-def send_sale_ack(device_id, sale_id):
-    """Отправка подтверждения получения продажи"""
-    if device_id not in devices:
-        current_app.logger.error(f"❌ Устройство {device_id} не найдено в памяти")
-        return False
-
-    topic = f"wsm/{device_id}/client/sale/ack"
-    payload = json.dumps({
-        "id": sale_id,
-        "code": 0  # 0 - успешно
-    })
-
-    print(f"📤 Sending sale ACK to {device_id} for sale ID {sale_id}")
-
-    try:
-        # Отправка сообщения в MQTT
-        result = client.publish(topic, payload)
-
-        # Проверка успешности публикации
-        if result.rc != 0:
-            current_app.logger.error(f"❌ Ошибка публикации ACK для продажи {sale_id} (код {result.rc})")
-            return False
-
-        # Проверяем, существует ли продажа в БД
-        sale = get_sale(device_id, sale_id)
-        if not sale:
-            current_app.logger.error(f"⚠️ Продажа {sale_id} для устройства {device_id} не найдена в БД")
-            return False
-
-        # Отмечаем продажу как подтвержденную в БД
-        mark_sale_ack_sent(sale.id)
-        print(f"✅ Sale ACK sent successfully for {sale_id}")
-
-        return True
-
-    except Exception as e:
-        current_app.logger.error(f"❌ Ошибка при отправке подтверждения продажи {sale_id}: {e}")
-        return False
-
-def send_collection_ack(device_id, collection_id):
-    """Отправка подтверждения получения инкассации"""
-    from db.utils import get_collection, mark_collection_ack_sent
-
+def update_monobank_api_key(device_id, api_key):
+    """Обновление API-ключа Monobank для устройства."""
     if device_id in devices:
-        topic = f"wsm/{device_id}/client/incass/ack"
-        payload = json.dumps({
-            "id": collection_id,
-            "code": 0  # 0 - успешно
-        })
-        print(f"📤 Sending collection ACK to {device_id} for collection ID {collection_id}")
-        result = client.publish(topic, payload)
+        # Сохраняем API-ключ во внутреннем хранилище, не отправляя его на устройство
+        devices[device_id]["monobank_api_key"] = api_key
+        print(f"🔑 Monobank API key updated for {device_id}")
         
-        if result.rc == 0:
-            # Обновляем статус в БД
-            collection = get_collection(device_id, collection_id)
-            if collection:
-                mark_collection_ack_sent(collection.id)
-            print(f"✅ Collection ACK sent successfully")
-            return True
-        else:
-            print(f"❌ Collection ACK publish failed with code {result.rc}")
-            return False
+        # Если в конфигурации еще нет поля API-ключа, добавляем его
+        if "config" in devices[device_id]:
+            devices[device_id]["config"]["monobank_api_key"] = api_key
 
 def send_reboot_command(device_id, delay):
     """Отправка команды на перезагрузку устройства."""
@@ -376,6 +220,10 @@ def request_display_info(device_id):
 
 def send_qrcode_payment(device_id, order_id, amount):
     """Отправка оплаты QR-кодом в устройство."""
+    if not check_mqtt_connection():
+        print("❌ Cannot send payment: MQTT not connected")
+        return False
+        
     if device_id in devices:
         topic = f"wsm/{device_id}/client/payment/set"
         payload = {
@@ -393,7 +241,6 @@ def send_qrcode_payment(device_id, order_id, amount):
         result = client.publish(topic, mqtt_payload)
         if result.rc == 0:
             print(f"✅ MQTT message sent successfully")
-            return True
         else:
             print(f"❌ MQTT publish failed with code {result.rc}")
             return False
