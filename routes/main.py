@@ -10,7 +10,7 @@ def get_post_data(sort_by=None):
     if not connection:
         return []
 
-    cursor = connection.cursor(dictionary=True)
+    cursor = connection.cursor()
     
     query = """
         SELECT DISTINCT pm.post_id, p.post_title

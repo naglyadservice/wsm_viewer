@@ -1,32 +1,25 @@
-from flask_sqlalchemy import SQLAlchemy
-from .models import db, User
-from werkzeug.security import generate_password_hash
-import sqlite3
+from .models import db
+import psycopg2
+from psycopg2.extras import DictCursor
+from config import load_config
 
 def init_db(app):
     """Инициализация базы данных приложения."""
     db.init_app(app)
-    
-    with app.app_context():
-        # Создаем таблицы
-        db.create_all()
         
-        # Проверяем наличие хотя бы одного пользователя
-        if User.query.count() == 0:
-            # Создаем пользователя admin
-            admin_user = User(
-                username='admin',
-                password_hash=generate_password_hash('alex414alex')
-            )
-            db.session.add(admin_user)
-            db.session.commit()
-
 def create_connection():
-    """Создание соединения с базой данных для выполнения прямых SQL-запросов."""
     try:
-        connection = sqlite3.connect('wsm_viewer.db')
-        connection.row_factory = sqlite3.Row  # Чтобы получать результаты как словари
+        config = load_config()
+        
+        connection = psycopg2.connect(
+            dbname=config.db.database,
+            user=config.db.user,
+            password=config.db.password,
+            host=config.db.host,
+            port=config.db.port,
+            cursor_factory=DictCursor
+        )
         return connection
     except Exception as e:
-        print(f"Ошибка при соединении с SQLite: {e}")
+        print(f"Ошибка при соединении с PostgreSQL: {e}")
         return None

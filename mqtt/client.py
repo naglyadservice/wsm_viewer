@@ -3,7 +3,7 @@ import json
 import time
 import traceback
 from flask import current_app
-from config import Config
+from config import load_config
 from datetime import datetime
 
 # Словарь для хранения данных об устройствах в оперативной памяти
@@ -63,7 +63,7 @@ def on_message(client, userdata, msg):
                         "action_ack": None,
                         "display": None,
                         "denomination": [], 
-                        "monobank_api_key": Config.DEFAULT_MONOBANK_API_KEY, 
+                        "monobank_api_key": load_config().monobank.api_key, 
                         "monobank_payments": []
                     }
 
@@ -453,16 +453,18 @@ def get_monobank_payments_history(device_id):
         return devices[device_id].get("monobank_payments", [])
     return []
 
+config = load_config()
+
 # Инициализация MQTT-клиента
 client = mqtt.Client()
-client.username_pw_set(Config.MQTT_USERNAME, Config.MQTT_PASSWORD)
+client.username_pw_set(config.mqtt.username, config.mqtt.password)
 client.on_connect = on_connect
 client.on_message = on_message
 
 # Подключение к брокеру
 try:
-    client.connect(Config.MQTT_BROKER, Config.MQTT_PORT, 60)
+    client.connect(config.mqtt.broker, config.mqtt.port, 60)
     client.loop_start()
-    print(f"🔌 Connecting to MQTT broker {Config.MQTT_BROKER}:{Config.MQTT_PORT}")
+    print(f"🔌 Connecting to MQTT broker {config.mqtt.broker}:{config.mqtt.port}")
 except Exception as e:
     print(f"❌ Failed to connect to MQTT broker: {e}")

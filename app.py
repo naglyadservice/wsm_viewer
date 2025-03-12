@@ -1,22 +1,22 @@
-from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, redirect, url_for, request
 from flask_login import login_user, logout_user, login_required, current_user
 
-from config import Config
+from config import load_config
 from api.routes import api
-from mqtt.client import devices, client  # Запускаем MQTT при старте
-from auth import init_auth, User, users, check_auth
+from mqtt.client import devices  # Запускаем MQTT при старте
+from auth import init_auth, users
 from db.database import init_db, db
 from db.models import db
 import requests
 import uuid
-import json
 import logging
-from datetime import datetime, timedelta
 from flask_migrate import Migrate
 # Инициализация Flask-приложения
 app = Flask(__name__, static_folder='static')
-app.config.from_object(Config)
+
+config = load_config()
+app.config['SQLALCHEMY_DATABASE_URI'] = config.db.construct_sqlalchemy_url()
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JSON_AS_ASCII'] = False  # Для корректной работы с кириллицей
 
 # Настройка логирования
@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO)
 app.logger.setLevel(logging.INFO)
 
 # Секретный ключ для сессий
-app.secret_key = Config.SECRET_KEY
+app.secret_key = config.flask.secret_key
 
 # Инициализация базы данных
 init_db(app)
@@ -188,4 +188,4 @@ def monopay_success(device_id):
     return render_template("monopay_success.html", device_id=device_id)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=Config.FLASK_PORT, debug=True)
+    app.run(host="0.0.0.0", port=config.flask.port, debug=True)

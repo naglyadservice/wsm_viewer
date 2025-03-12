@@ -1,21 +1,101 @@
-import os
-from dotenv import load_dotenv
+from dataclasses import dataclass
+from sqlalchemy.engine.url import URL
+from environs import Env
 import secrets
 
-load_dotenv()
+@dataclass
+class MQTTConfig:
+    broker: str
+    port: int
+    username: str
+    password: str
 
-class Config:
-    MQTT_BROKER = os.getenv("MQTT_BROKER", "mqtt.example.com")
-    MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
-    MQTT_USERNAME = os.getenv("MQTT_USERNAME", "user")
-    MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "pass")
-    FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
+    @staticmethod
+    def from_env(env: Env):
+        broker = env.str("MQTT_BROKER", "mqtt.example.com")
+        port = env.int("MQTT_PORT", 1883)
+        username = env.str("MQTT_USERNAME", "user")
+        password = env.str("MQTT_PASSWORD", "pass")
+        return MQTTConfig(
+            broker=broker, port=port, username=username, password=password
+        )
+
+
+@dataclass
+class FlaskConfig:
+    port: int
+    secret_key: str
+
+    @staticmethod
+    def from_env(env: Env):
+        port = env.int("FLASK_PORT", 5000)
+        secret_key = env.str("SECRET_KEY", None)
+        
+        if not secret_key:
+            secret_key = secrets.token_hex(16)
+        return FlaskConfig(port=port, secret_key=secret_key)
     
-    # Secret key для сессий и токенов
-    SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(16))
 
-    # Добавляем параметр БД
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///instance/wsm_viewer_app.db")
-    SQLALCHEMY_TRACK_MODIFICATIONS = False  # Отключаем предупреждения
-    # API ключ Monobank по умолчанию
-    DEFAULT_MONOBANK_API_KEY = os.getenv("MONOBANK_API_KEY", "")
+@dataclass
+class DbConfig:
+    host: str
+    password: str
+    user: str
+    database: str
+    port: int = 5432
+
+    def construct_sqlalchemy_url(self, driver="psycopg2", host=None, port=None) -> str:
+        if not host:
+            host = self.host
+        if not port:
+            port = self.port
+        uri = URL.create(
+            drivername=f"postgresql+{driver}",
+            username=self.user,
+            password=self.password,
+            host=host,
+            port=port,
+            database=self.database,
+        )
+        return uri.render_as_string(hide_password=False)
+
+    @staticmethod
+    def from_env(env: Env):
+        host = env.str("DB_HOST")
+        password = env.str("POSTGRES_PASSWORD")
+        user = env.str("POSTGRES_USER")
+        database = env.str("POSTGRES_DB")
+        port = env.int("DB_PORT", 5432)
+        return DbConfig(
+            host=host, password=password, user=user, database=database, port=port
+        )
+
+
+@dataclass
+class Miscellaneous:
+    monobank_api_key: str = ""
+
+    @staticmethod
+    def from_env(env: Env):
+        monobank_api_key = env.str("MONOBANK_API_KEY", "")
+        return Miscellaneous(monobank_api_key=monobank_api_key)
+
+
+@dataclass
+class Config:
+    mqtt: MQTTConfig
+    flask: FlaskConfig
+    db: DbConfig
+    misc: Miscellaneous
+
+
+def load_config(path: str = None) -> Config:
+    env = Env()
+    env.read_env(path)
+
+    return Config(
+        mqtt=MQTTConfig.from_env(env),
+        flask=FlaskConfig.from_env(env),
+        db=DbConfig.from_env(env),
+        misc=Miscellaneous.from_env(env)
+    )
