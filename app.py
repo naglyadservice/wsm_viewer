@@ -6,7 +6,7 @@ from api.routes import api
 from mqtt.client import devices  # Запускаем MQTT при старте
 from auth import init_auth, users
 from db.database import init_db
-from db.models import db
+from db.models import db, Device
 import requests
 import uuid
 import logging
@@ -73,7 +73,9 @@ def index():
 @login_required
 def device_page(device_id):
     """Страница конкретного устройства с настройками"""
-    if device_id not in devices:
+    # Перевіряємо наявність пристрою в базі
+    device = Device.query.get(device_id)
+    if not device:
         return "Device not found", 404
     return render_template("device.html", device_id=device_id)
 
@@ -81,7 +83,9 @@ def device_page(device_id):
 @login_required
 def device_sales_page(device_id):
     """Страница продаж устройства"""
-    if device_id not in devices:
+    # Перевіряємо наявність пристрою в базі
+    device = Device.query.get(device_id)
+    if not device:
         return "Device not found", 404
     return render_template("sales.html", device_id=device_id)
 
@@ -89,15 +93,18 @@ def device_sales_page(device_id):
 @login_required
 def device_collections_page(device_id):
     """Страница инкассаций устройства"""
-    if device_id not in devices:
+    # Перевіряємо наявність пристрою в базі
+    device = Device.query.get(device_id)
+    if not device:
         return "Device not found", 404
     return render_template("collections.html", device_id=device_id)
 
 @app.route("/monopay/<device_id>", methods=["GET", "POST"])
 def monopay_page(device_id):
     """Публичная страница оплаты через Monobank"""
-    # Проверяем, существует ли устройство
-    if device_id not in devices:
+    # Перевіряємо наявність пристрою в базі
+    device = Device.query.get(device_id)
+    if not device:
         return "Устройство не найдено", 404
     
     error = None
