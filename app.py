@@ -5,7 +5,7 @@ from config import load_config
 from api.routes import api
 from mqtt.client import devices  # Запускаем MQTT при старте
 from auth import init_auth, users
-from db.database import init_db, db
+from db.database import init_db
 from db.models import db
 import requests
 import uuid
@@ -28,8 +28,6 @@ app.secret_key = config.flask.secret_key
 
 # Инициализация базы данных
 init_db(app)
-migrate = Migrate(app, db)
-migrate.init_app(app, db)
 
 # Инициализация авторизации
 init_auth(app)

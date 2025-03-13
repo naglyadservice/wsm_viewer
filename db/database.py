@@ -2,10 +2,18 @@ from .models import db
 import psycopg2
 from psycopg2.extras import DictCursor
 from config import load_config
+from flask_migrate import Migrate, upgrade
 
 def init_db(app):
     """Инициализация базы данных приложения."""
     db.init_app(app)
+    
+    # Настройка миграций
+    Migrate(app, db)
+    
+    # Автоматическое выполнение миграций при запуске
+    with app.app_context():
+        upgrade()
         
 def create_connection():
     try:
